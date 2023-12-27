@@ -3,7 +3,7 @@ pub mod language_type;
 pub mod languages;
 mod syntax;
 
-use std::{collections::BTreeMap, mem, ops::AddAssign};
+use std::{collections::BTreeMap, collections::HashMap, mem, ops::AddAssign, path::Path};
 
 pub use self::{language_type::*, languages::Languages};
 
@@ -81,6 +81,54 @@ impl Language {
         }
 
         summary
+    }
+
+    /// Generates stats for directories and their child directories.
+    ///
+    /// ```no_run
+    /// use tokei::Language;
+    ///
+    /// let mut language = Language::new();
+    ///
+    /// // Add stats, assuming 10 directories are on the path afterward...
+    ///
+    /// // Compute totals.
+    /// language.total();
+    ///
+    /// let reports = language.reports.len();
+    ///
+    /// language.dirs();
+    ///
+    /// assert_eq!(reports + 10, language.reports.len());
+    /// ```
+    pub fn dirs(&mut self) {
+        let empty = Path::new("");
+
+        let mut dir_reports = HashMap::new();
+        for r in &self.reports {
+            let mut path = r.name.to_owned();
+
+            while let Some(dir) = path.parent() {
+                path = dir.to_path_buf();
+
+                if path == empty {
+                    continue;
+                }
+
+                let dir_report = dir_reports
+                    .entry(path.clone())
+                    .or_insert_with(|| {
+                        let mut report = Report::default();
+                        report.name = path.clone();
+                        report
+                    });
+                dir_report.stats.comments += r.stats.comments;
+                dir_report.stats.code += r.stats.code;
+                dir_report.stats.blanks += r.stats.blanks;
+            }
+        }
+
+        self.reports.extend(dir_reports.into_values());
     }
 
     /// Totals up the statistics of the `Stat` structs currently contained in
