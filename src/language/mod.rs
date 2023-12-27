@@ -2,6 +2,7 @@ mod embedding;
 pub mod language_type;
 pub mod languages;
 mod syntax;
+
 use std::{collections::BTreeMap, collections::HashMap, mem, ops::AddAssign, path::Path};
 
 pub use self::{language_type::*, languages::Languages};
