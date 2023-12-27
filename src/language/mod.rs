@@ -1,13 +1,13 @@
+use std::{collections::BTreeMap, collections::HashMap, mem, ops::AddAssign, path::Path};
+
+use crate::{sort::Sort, stats::Report};
+
+pub use self::{language_type::*, languages::Languages};
+
 mod embedding;
 pub mod language_type;
 pub mod languages;
 mod syntax;
-
-use std::{collections::BTreeMap, collections::HashMap, mem, ops::AddAssign, path::Path};
-
-pub use self::{language_type::*, languages::Languages};
-
-use crate::{sort::Sort, stats::Report};
 
 /// A struct representing statistics about a single Language.
 #[derive(Clone, Debug, Deserialize, Default, PartialEq, Serialize)]
@@ -104,31 +104,35 @@ impl Language {
     pub fn dirs(&mut self) {
         let empty = Path::new("");
 
-        let mut dir_reports = HashMap::new();
-        for r in &self.reports {
-            let mut path = r.name.to_owned();
+        let reports: Vec<Report> = {
+            let mut dir_reports = HashMap::new();
 
-            while let Some(dir) = path.parent() {
-                path = dir.to_path_buf();
+            for child_report in &self.reports {
+                let mut path = child_report.name.as_path();
+                while let Some(dir) = path.parent() {
+                    path = dir;
+                    if path == empty {
+                        continue;
+                    }
 
-                if path == empty {
-                    continue;
+                    let dir_report = dir_reports
+                        .entry(path)
+                        .or_insert_with(|| {
+                            let mut report = Report::default();
+                            report.name = path.to_path_buf();
+                            report
+                        });
+
+                    dir_report.stats.comments += child_report.stats.comments;
+                    dir_report.stats.code += child_report.stats.code;
+                    dir_report.stats.blanks += child_report.stats.blanks;
                 }
-
-                let dir_report = dir_reports
-                    .entry(path.clone())
-                    .or_insert_with(|| {
-                        let mut report = Report::default();
-                        report.name = path.clone();
-                        report
-                    });
-                dir_report.stats.comments += r.stats.comments;
-                dir_report.stats.code += r.stats.code;
-                dir_report.stats.blanks += r.stats.blanks;
             }
-        }
 
-        self.reports.extend(dir_reports.into_values());
+            dir_reports.into_values().collect()
+        };
+
+        self.reports.extend(reports);
     }
 
     /// Totals up the statistics of the `Stat` structs currently contained in
