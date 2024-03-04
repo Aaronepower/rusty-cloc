@@ -1,8 +1,8 @@
 use std::mem;
 use std::process;
 
-use clap::Arg;
-use clap::{crate_description, ArgMatches};
+use clap::{Arg, Command, crate_description, value_parser, ArgMatches};
+use clap_complete::Shell;
 use colored::Colorize;
 use tokei::{Config, LanguageType, Sort};
 
@@ -53,169 +53,182 @@ pub struct Cli {
     pub verbose: u64,
 }
 
+pub fn build_cli() -> Command<'static> {
+    let version = crate_version().leak();
+
+    clap::App::new("tokei")
+    .version(&*version)
+    .author("Erin P. <xampprocky@gmail.com> + Contributors")
+    .about(concat!(
+        crate_description!(),
+        "\n",
+        "Support this project on GitHub Sponsors: https://github.com/sponsors/XAMPPRocky"
+    ))
+    .arg(
+        Arg::new("columns")
+            .long("columns")
+            .short('c')
+            .takes_value(true)
+            .conflicts_with("output")
+            .help(
+                "Sets a strict column width of the output, only available for \
+                terminal output.",
+            ),
+    )
+    .arg(
+        Arg::new("exclude")
+            .long("exclude")
+            .short('e')
+            .takes_value(true)
+            .multiple_values(true)
+            .help("Ignore all files & directories matching the pattern."),
+    )
+    .arg(
+        Arg::new("files")
+            .long("files")
+            .short('f')
+            .help("Will print out statistics on individual files."),
+    )
+    .arg(
+        Arg::new("file_input")
+            .long("input")
+            .short('i')
+            .takes_value(true)
+            .help(
+                "Gives statistics from a previous tokei run. Can be given a file path, \
+                or \"stdin\" to read from stdin.",
+            ),
+    )
+    .arg(
+        Arg::new("gencompletions")
+        .long("gencompletions")
+        .short('g')
+        .takes_value(true)
+        .value_parser(value_parser!(Shell))
+        .help("Generate completions for the specified shell.")
+    )
+    .arg(
+        Arg::new("hidden")
+            .long("hidden")
+            .help("Count hidden files."),
+    )
+    .arg(
+        Arg::new("input")
+            .min_values(1)
+            .conflicts_with("languages")
+            .help("The path(s) to the file or directory to be counted.(default current directory)"),
+    )
+    .arg(
+        Arg::new("languages")
+            .long("languages")
+            .short('l')
+            .conflicts_with("input")
+            .help("Prints out supported languages and their extensions."),
+    )
+    .arg(Arg::new("no_ignore").long("no-ignore").help(
+        "Don't respect ignore files (.gitignore, .ignore, etc.). This implies \
+        --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.",
+    ))
+    .arg(Arg::new("no_ignore_parent").long("no-ignore-parent").help(
+        "Don't respect ignore files (.gitignore, .ignore, etc.) in parent \
+        directories.",
+    ))
+    .arg(Arg::new("no_ignore_dot").long("no-ignore-dot").help(
+        "Don't respect .ignore and .tokeignore files, including this in \
+        parent directories.",
+    ))
+    .arg(Arg::new("no_ignore_vcs").long("no-ignore-vcs").help(
+        "Don't respect VCS ignore files (.gitignore, .hgignore, etc.) including \
+        those in parent directories.",
+    ))
+    .arg(
+        Arg::new("output")
+            .long("output")
+            .short('o')
+            .takes_value(true)
+            .possible_values(Format::all())
+            .help(
+                "Outputs Tokei in a specific format. Compile with additional features for \
+                more format support.",
+            ),
+    )
+    .arg(
+        Arg::new("streaming")
+            .long("streaming")
+            .takes_value(true)
+            .possible_values(&["simple", "json"])
+            .ignore_case(true)
+            .help(
+                "prints the (language, path, lines, blanks, code, comments) records as \
+                simple lines or as Json for batch processing",
+            ),
+    )
+    .arg(
+        Arg::new("sort")
+            .long("sort")
+            .short('s')
+            .takes_value(true)
+            .possible_values(&["files", "lines", "blanks", "code", "comments"])
+            .ignore_case(true)
+            .conflicts_with("rsort")
+            .help("Sort languages based on column"),
+    )
+    .arg(
+        Arg::new("rsort")
+            .long("rsort")
+            .short('r')
+            .takes_value(true)
+            .possible_values(&["files", "lines", "blanks", "code", "comments"])
+            .ignore_case(true)
+            .conflicts_with("sort")
+            .help("Reverse sort languages based on column"),
+    )
+    .arg(
+        Arg::new("types")
+            .long("types")
+            .short('t')
+            .takes_value(true)
+            .help(
+                "Filters output by language type, separated by a comma. i.e. \
+                -t=Rust,Markdown",
+            ),
+    )
+    .arg(
+        Arg::new("compact")
+            .long("compact")
+            .short('C')
+            .help("Do not print statistics about embedded languages."),
+    )
+    .arg(
+        Arg::new("num_format_style")
+            .long("num-format")
+            .short('n')
+            .takes_value(true)
+            .possible_values(NumberFormatStyle::all())
+            .conflicts_with("output")
+            .help(
+                "Format of printed numbers, i.e., plain (1234, default), \
+                commas (1,234), dots (1.234), or underscores (1_234). Cannot be \
+                used with --output.",
+            ),
+    )
+    .arg(
+        Arg::new("verbose")
+            .long("verbose")
+            .short('v')
+            .multiple_occurrences(true)
+            .help(
+                "Set log output level:
+                1: to show unknown file extensions,
+                2: reserved for future debugging,
+                3: enable file level trace. Not recommended on multiple files",
+            ),
+    )
+}
+
 impl Cli {
     pub fn from_args() -> Self {
-        let matches = clap::App::new("tokei")
-            .version(&*crate_version())
-            .author("Erin P. <xampprocky@gmail.com> + Contributors")
-            .about(concat!(
-                crate_description!(),
-                "\n",
-                "Support this project on GitHub Sponsors: https://github.com/sponsors/XAMPPRocky"
-            ))
-            .arg(
-                Arg::new("columns")
-                    .long("columns")
-                    .short('c')
-                    .takes_value(true)
-                    .conflicts_with("output")
-                    .help(
-                        "Sets a strict column width of the output, only available for \
-                        terminal output.",
-                    ),
-            )
-            .arg(
-                Arg::new("exclude")
-                    .long("exclude")
-                    .short('e')
-                    .takes_value(true)
-                    .multiple_values(true)
-                    .help("Ignore all files & directories matching the pattern."),
-            )
-            .arg(
-                Arg::new("files")
-                    .long("files")
-                    .short('f')
-                    .help("Will print out statistics on individual files."),
-            )
-            .arg(
-                Arg::new("file_input")
-                    .long("input")
-                    .short('i')
-                    .takes_value(true)
-                    .help(
-                        "Gives statistics from a previous tokei run. Can be given a file path, \
-                        or \"stdin\" to read from stdin.",
-                    ),
-            )
-            .arg(
-                Arg::new("hidden")
-                    .long("hidden")
-                    .help("Count hidden files."),
-            )
-            .arg(
-                Arg::new("input")
-                    .min_values(1)
-                    .conflicts_with("languages")
-                    .help("The path(s) to the file or directory to be counted.(default current directory)"),
-            )
-            .arg(
-                Arg::new("languages")
-                    .long("languages")
-                    .short('l')
-                    .conflicts_with("input")
-                    .help("Prints out supported languages and their extensions."),
-            )
-            .arg(Arg::new("no_ignore").long("no-ignore").help(
-                "Don't respect ignore files (.gitignore, .ignore, etc.). This implies \
-                --no-ignore-parent, --no-ignore-dot, and --no-ignore-vcs.",
-            ))
-            .arg(Arg::new("no_ignore_parent").long("no-ignore-parent").help(
-                "Don't respect ignore files (.gitignore, .ignore, etc.) in parent \
-                directories.",
-            ))
-            .arg(Arg::new("no_ignore_dot").long("no-ignore-dot").help(
-                "Don't respect .ignore and .tokeignore files, including this in \
-                parent directories.",
-            ))
-            .arg(Arg::new("no_ignore_vcs").long("no-ignore-vcs").help(
-                "Don't respect VCS ignore files (.gitignore, .hgignore, etc.) including \
-                those in parent directories.",
-            ))
-            .arg(
-                Arg::new("output")
-                    .long("output")
-                    .short('o')
-                    .takes_value(true)
-                    .possible_values(Format::all())
-                    .help(
-                        "Outputs Tokei in a specific format. Compile with additional features for \
-                        more format support.",
-                    ),
-            )
-            .arg(
-                Arg::new("streaming")
-                    .long("streaming")
-                    .takes_value(true)
-                    .possible_values(&["simple", "json"])
-                    .ignore_case(true)
-                    .help(
-                        "prints the (language, path, lines, blanks, code, comments) records as \
-                        simple lines or as Json for batch processing",
-                    ),
-            )
-            .arg(
-                Arg::new("sort")
-                    .long("sort")
-                    .short('s')
-                    .takes_value(true)
-                    .possible_values(&["files", "lines", "blanks", "code", "comments"])
-                    .ignore_case(true)
-                    .conflicts_with("rsort")
-                    .help("Sort languages based on column"),
-            )
-            .arg(
-                Arg::new("rsort")
-                    .long("rsort")
-                    .short('r')
-                    .takes_value(true)
-                    .possible_values(&["files", "lines", "blanks", "code", "comments"])
-                    .ignore_case(true)
-                    .conflicts_with("sort")
-                    .help("Reverse sort languages based on column"),
-            )
-            .arg(
-                Arg::new("types")
-                    .long("types")
-                    .short('t')
-                    .takes_value(true)
-                    .help(
-                        "Filters output by language type, separated by a comma. i.e. \
-                        -t=Rust,Markdown",
-                    ),
-            )
-            .arg(
-                Arg::new("compact")
-                    .long("compact")
-                    .short('C')
-                    .help("Do not print statistics about embedded languages."),
-            )
-            .arg(
-                Arg::new("num_format_style")
-                    .long("num-format")
-                    .short('n')
-                    .takes_value(true)
-                    .possible_values(NumberFormatStyle::all())
-                    .conflicts_with("output")
-                    .help(
-                        "Format of printed numbers, i.e., plain (1234, default), \
-                        commas (1,234), dots (1.234), or underscores (1_234). Cannot be \
-                        used with --output.",
-                    ),
-            )
-            .arg(
-                Arg::new("verbose")
-                    .long("verbose")
-                    .short('v')
-                    .multiple_occurrences(true)
-                    .help(
-                        "Set log output level:
-                        1: to show unknown file extensions,
-                        2: reserved for future debugging,
-                        3: enable file level trace. Not recommended on multiple files",
-                    ),
-            )
-            .get_matches();
+        let matches = build_cli().get_matches();
 
         let columns = matches.value_of("columns").map(parse_or_exit::<usize>);
         let files = matches.is_present("files");
